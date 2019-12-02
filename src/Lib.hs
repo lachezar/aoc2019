@@ -4,25 +4,29 @@ module Lib
   ( day2
   ) where
 
-import qualified Data.Text as T
+import qualified Data.Text as Text
+import Data.Text.Read (decimal)
 
 import Control.Monad (forever)
 
 import Control.Monad.IO.Class (liftIO)
+import Data.Either (fromRight)
 import Data.List (find)
 import Data.Maybe (fromMaybe)
 import GHC.IO.Handle (isEOF)
+import System.Exit (die)
 
 day1 :: IO ()
 day1 = do
   lines <- getLines
   day1Solution 0 lines
 
-day1Solution :: Int -> [String] -> IO ()
+day1Solution :: Int -> [Text.Text] -> IO ()
 day1Solution total [] = print total
-day1Solution total (line:lines) = day1Solution (total + calcFuel mass) lines
-  where
-    mass = read line :: Int
+day1Solution total (line:lines) =
+  case decimal line of
+    Left _ -> die "Couldn't parse the input"
+    Right (mass, _) -> day1Solution (total + calcFuel mass) lines
 
 calcFuel :: Int -> Int
 calcFuel mass
@@ -34,11 +38,16 @@ calcFuel mass
 day2 :: IO ()
 day2 = do
   [line] <- getLines
-  let seq = (map (read . T.unpack) $ T.splitOn (T.pack ",") (T.pack line)) :: [Int]
-  let pairs = [(i, j) | i <- [0 .. 99], j <- [0 .. 99]]
-  let (i, j) =
-        fromMaybe (-1, -1) $ find (\(i, j) -> 19690720 == day2Solution 0 (updateList (updateList seq 1 i) 2 j)) pairs
-  print $ 100 * i + j
+  case mapM decimal $ Text.splitOn (Text.pack ",") line of
+    Left _ -> die "Couldn't parse the input"
+    Right seq ->
+      let seq' = map fst seq
+       in let inputParams = find (\(i, j) -> 19690720 == day2Solution 0 (updateList (updateList seq' 1 i) 2 j)) pairs
+           in case inputParams of
+                Nothing -> print "Couldn't find the input params"
+                Just (i, j) -> print $ 100 * i + j
+  where
+    pairs = [(i, j) | i <- [0 .. 99], j <- [0 .. 99]]
 
 day2Solution :: Int -> [Int] -> Int
 day2Solution cp seq
@@ -56,6 +65,6 @@ calc seq 2 addr1 addr2 = seq !! addr1 * seq !! addr2
 updateList :: [a] -> Int -> a -> [a]
 updateList l i v = take i l ++ [v] ++ drop (i + 1) l
 
-getLines :: IO [String]
+getLines :: IO [Text.Text]
 -- getLines = return ["2,4,4,5,99,0"]
-getLines = lines <$> getContents
+getLines = Text.lines . Text.pack <$> getContents
