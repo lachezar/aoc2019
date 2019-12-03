@@ -1,19 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Lib
-  ( day2
+  ( day1
+  , day2
+  , day3
   ) where
 
+import Data.List (find)
 import qualified Data.Text as Text
 import Data.Text.Read (decimal)
-
-import Control.Monad (forever)
-
-import Control.Monad.IO.Class (liftIO)
-import Data.Either (fromRight)
-import Data.List (find)
-import Data.Maybe (fromMaybe)
-import GHC.IO.Handle (isEOF)
 import System.Exit (die)
 
 day1 :: IO ()
@@ -65,6 +60,84 @@ calc seq 2 addr1 addr2 = seq !! addr1 * seq !! addr2
 updateList :: [a] -> Int -> a -> [a]
 updateList l i v = take i l ++ [v] ++ drop (i + 1) l
 
+day3 :: IO ()
+day3 = do
+  lines <- getLines
+  day3Solution lines
+
+day3Solution :: [Text.Text] -> IO ()
+day3Solution lines =
+  let makeSequence =
+        mapM
+          (\direction ->
+             case decimal $ Text.tail direction of
+               Left x -> Left x
+               Right (i, _) -> Right (Text.head direction, i)) .
+        Text.splitOn (Text.pack ",")
+   in case mapM makeSequence lines of
+        Left _ -> die "Couldn't parse the input"
+        Right wires ->
+          let [wire1, wire2] =
+                map
+                  (makeLines .
+                   reverse .
+                   foldl (\pts (direction, offset) -> relativePoint (head pts) direction offset : pts) [Point 0 0])
+                  wires
+           in print $
+              minimum .
+              map
+                (\(l1, l2) ->
+                   lineLength (Line (p1 l1) (crossPoint l1 l2)) + lineLength (Line (p1 l2) (crossPoint l1 l2)) +
+                   (sum . map lineLength $ takeWhile (\l -> l1 /= l) wire1) +
+                   (sum . map lineLength $ takeWhile (\l -> l2 /= l) wire2)) $
+              filter (uncurry checkLinesCross) [(l1, l2) | l1 <- tail wire1, l2 <- tail wire2]
+
+data Point =
+  Point
+    { x :: Int
+    , y :: Int
+    }
+  deriving (Show, Eq)
+
+data Line =
+  Line
+    { p1 :: Point
+    , p2 :: Point
+    }
+  deriving (Show, Eq)
+
+relativePoint :: Point -> Char -> Int -> Point
+relativePoint (Point x y) 'L' offset = Point (x - offset) y
+relativePoint (Point x y) 'R' offset = Point (x + offset) y
+relativePoint (Point x y) 'U' offset = Point x (y + offset)
+relativePoint (Point x y) 'D' offset = Point x (y - offset)
+
+makeLines :: [Point] -> [Line]
+makeLines [p1, p2] = [Line p1 p2]
+makeLines (p1:p2:pts) = Line p1 p2 : makeLines (p2 : pts)
+
+checkLinesCross :: Line -> Line -> Bool
+checkLinesCross (Line (Point a1 b1) (Point a2 b2)) (Line (Point x1 y1) (Point x2 y2)) =
+  (between a1 x1 a2 || between a1 x2 a2 || between x1 a1 x2 || between x1 a2 x2) &&
+  (between b1 y1 b2 || between b1 y2 b2 || between y1 b1 y2 || between y1 b2 y2)
+
+between :: Int -> Int -> Int -> Bool
+between x c y = (x <= c && c <= y) || (y <= c && c <= x)
+
+manhattanDistance :: Line -> Line -> Int
+manhattanDistance (Line (Point a1 b1) (Point a2 b2)) (Line (Point x1 y1) (Point x2 y2))
+  | a1 == a2 && y1 == y2 = abs a1 + abs y1
+  | b1 == b2 && x1 == x2 = abs b1 + abs x1
+
+crossPoint :: Line -> Line -> Point
+crossPoint (Line (Point a1 b1) (Point a2 b2)) (Line (Point x1 y1) (Point x2 y2))
+  | a1 == a2 && y1 == y2 = Point a1 y1
+  | b1 == b2 && x1 == x2 = Point x1 b1
+
+lineLength :: Line -> Int
+lineLength (Line (Point x1 y1) (Point x2 y2)) = abs (x1 - x2) + abs (y1 - y2)
+
 getLines :: IO [Text.Text]
--- getLines = return ["2,4,4,5,99,0"]
 getLines = Text.lines . Text.pack <$> getContents
+-- getLines = return ["R98,U47,R26,D63,R33,U87,L62,D20,R33,U53,R51", "U98,R91,D20,R16,D67,R40,U7,R15,U6,R7"]
+-- getLines = return ["R75,D30,R83,U83,L12,D49,R71,U7,L72", "U62,R66,U55,R34,D71,R55,D58,R83"]
