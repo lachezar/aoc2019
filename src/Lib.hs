@@ -4,6 +4,7 @@ module Lib
   ( day1
   , day2
   , day3
+  , day4
   ) where
 
 import Data.List (find)
@@ -137,7 +138,39 @@ crossPoint (Line (Point a1 b1) (Point a2 b2)) (Line (Point x1 y1) (Point x2 y2))
 lineLength :: Line -> Int
 lineLength (Line (Point x1 y1) (Point x2 y2)) = abs (x1 - x2) + abs (y1 - y2)
 
+day4 :: IO ()
+day4 = do
+  [line] <- getLines
+  day4Solution line
+
+day4Solution :: Text.Text -> IO ()
+day4Solution line =
+  case mapM decimal $ Text.splitOn (Text.pack "-") line of
+    Left _ -> die "Couldn't parse the input"
+    Right [(low, _), (high, _)] ->
+      print $
+      length $ filter (== True) [elem 2 (islands (show i) '@' []) && checkForIncreasing (show i) | i <- [low .. high]]
+
+checkForDouble :: String -> Bool
+checkForDouble [_] = False
+checkForDouble (a:b:rest)
+  | a == b = True
+  | otherwise = checkForDouble (b : rest)
+
+islands :: String -> Char -> [Int] -> [Int]
+islands "" _ acc = acc
+islands (a:rest) _ [] = islands rest a [1]
+islands (a:rest) c (n:acc)
+  | a == c = islands rest c ((n + 1) : acc)
+  | otherwise = islands rest a (1 : n : acc)
+
+checkForIncreasing :: String -> Bool
+checkForIncreasing [_] = True
+checkForIncreasing (a:b:rest)
+  | a <= b = checkForIncreasing (b : rest)
+  | otherwise = False
+
 getLines :: IO [Text.Text]
-getLines = Text.lines . Text.pack <$> getContents
+-- getLines = Text.lines . Text.pack <$> getContents
 -- getLines = return ["R98,U47,R26,D63,R33,U87,L62,D20,R33,U53,R51", "U98,R91,D20,R16,D67,R40,U7,R15,U6,R7"]
--- getLines = return ["R75,D30,R83,U83,L12,D49,R71,U7,L72", "U62,R66,U55,R34,D71,R55,D58,R83"]
+getLines = return ["353096-843212"]
