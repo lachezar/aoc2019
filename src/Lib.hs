@@ -5,11 +5,12 @@ module Lib
   , day2
   , day3
   , day4
+  , day5
   ) where
 
 import Data.List (find)
 import qualified Data.Text as Text
-import Data.Text.Read (decimal)
+import Data.Text.Read (decimal, signed)
 import System.Exit (die)
 
 day1 :: IO ()
@@ -170,7 +171,77 @@ checkForIncreasing (a:b:rest)
   | a <= b = checkForIncreasing (b : rest)
   | otherwise = False
 
+day5 :: IO ()
+day5 = do
+  [line] <- getLines
+  day5Solution line
+
+day5Solution :: Text.Text -> IO ()
+day5Solution line =
+  case mapM (signed decimal) $ Text.splitOn (Text.pack ",") line of
+    Left _ -> die "Couldn't parse the input"
+    Right seq -> processInstruction 0 $ map fst seq
+
+processInstruction :: Int -> [Int] -> IO ()
+processInstruction pc seq =
+  case seq !! pc of
+    99 -> print "end"
+    104 -> do
+      print $ seq !! (pc + 1)
+      processInstruction (pc + 2) seq
+    4 -> do
+      print $ seq !! (seq !! (pc + 1))
+      processInstruction (pc + 2) seq
+    3 -> do
+      x <- getLine
+      let seq' = updateList seq (seq !! (pc + 1)) (read x)
+      processInstruction (pc + 2) seq'
+    other -> uncurry processInstruction $ processComplexInstruction pc seq (pad (show other) '0' 5)
+
+processComplexInstruction :: Int -> [Int] -> String -> (Int, [Int])
+processComplexInstruction pc seq (_a:b:c:de)
+  | de == "05" || de == "06" =
+    let nextPc =
+          if instructionType' de (getValueUsingMode seq c (seq !! (pc + 1))) 0
+            then getValueUsingMode seq b (seq !! (pc + 2))
+            else pc + 3
+     in (nextPc, seq)
+  | de == "07" || de == "08" =
+    let v =
+          if instructionType' de (getValueUsingMode seq c (seq !! (pc + 1))) (getValueUsingMode seq b (seq !! (pc + 2)))
+            then 1
+            else 0
+     in (pc + 4, updateList seq (seq !! (pc + 3)) v)
+  | otherwise =
+    let result =
+          instructionType de (getValueUsingMode seq c (seq !! (pc + 1))) (getValueUsingMode seq b (seq !! (pc + 2)))
+     in (pc + 4, updateList seq (seq !! (pc + 3)) result)
+
+getValueUsingMode :: [Int] -> Char -> Int -> Int
+getValueUsingMode _seq '1' input = input
+getValueUsingMode seq '0' input = seq !! input
+
+instructionType :: Num a => String -> (a -> a -> a)
+instructionType "02" = (*)
+instructionType "01" = (+)
+
+instructionType' ::
+     Eq a
+  => Ord a =>
+       String -> (a -> a -> Bool)
+instructionType' "08" = (==)
+instructionType' "07" = (<)
+instructionType' "06" = (==)
+instructionType' "05" = (/=)
+
+pad :: String -> Char -> Int -> String
+pad s c n = replicate (n - length s) c ++ s
+
 getLines :: IO [Text.Text]
 -- getLines = Text.lines . Text.pack <$> getContents
 -- getLines = return ["R98,U47,R26,D63,R33,U87,L62,D20,R33,U53,R51", "U98,R91,D20,R16,D67,R40,U7,R15,U6,R7"]
-getLines = return ["353096-843212"]
+-- getLines = return ["1002,4,3,4,33"]
+getLines =
+  return
+    [ "3,225,1,225,6,6,1100,1,238,225,104,0,1102,78,40,225,1102,52,43,224,1001,224,-2236,224,4,224,102,8,223,223,101,4,224,224,1,224,223,223,1,191,61,224,1001,224,-131,224,4,224,102,8,223,223,101,4,224,224,1,223,224,223,1101,86,74,225,1102,14,76,225,1101,73,83,224,101,-156,224,224,4,224,102,8,223,223,101,6,224,224,1,224,223,223,1102,43,82,225,2,196,13,224,101,-6162,224,224,4,224,102,8,223,223,101,5,224,224,1,223,224,223,1001,161,51,224,101,-70,224,224,4,224,102,8,223,223,1001,224,1,224,1,224,223,223,102,52,187,224,1001,224,-832,224,4,224,102,8,223,223,101,1,224,224,1,224,223,223,1102,19,79,225,101,65,92,224,1001,224,-147,224,4,224,1002,223,8,223,101,4,224,224,1,223,224,223,1102,16,90,225,1102,45,44,225,1102,92,79,225,1002,65,34,224,101,-476,224,224,4,224,102,8,223,223,1001,224,5,224,1,224,223,223,4,223,99,0,0,0,677,0,0,0,0,0,0,0,0,0,0,0,1105,0,99999,1105,227,247,1105,1,99999,1005,227,99999,1005,0,256,1105,1,99999,1106,227,99999,1106,0,265,1105,1,99999,1006,0,99999,1006,227,274,1105,1,99999,1105,1,280,1105,1,99999,1,225,225,225,1101,294,0,0,105,1,0,1105,1,99999,1106,0,300,1105,1,99999,1,225,225,225,1101,314,0,0,106,0,0,1105,1,99999,107,226,226,224,1002,223,2,223,1005,224,329,1001,223,1,223,1007,226,226,224,102,2,223,223,1005,224,344,101,1,223,223,1008,226,226,224,102,2,223,223,1005,224,359,1001,223,1,223,8,226,677,224,102,2,223,223,1006,224,374,101,1,223,223,1107,226,677,224,1002,223,2,223,1006,224,389,101,1,223,223,1108,226,677,224,102,2,223,223,1005,224,404,101,1,223,223,107,677,677,224,102,2,223,223,1006,224,419,1001,223,1,223,7,677,226,224,102,2,223,223,1005,224,434,101,1,223,223,1007,677,677,224,102,2,223,223,1005,224,449,1001,223,1,223,108,226,677,224,102,2,223,223,1005,224,464,1001,223,1,223,108,226,226,224,102,2,223,223,1006,224,479,101,1,223,223,107,226,677,224,102,2,223,223,1006,224,494,1001,223,1,223,7,226,226,224,1002,223,2,223,1006,224,509,101,1,223,223,1108,677,226,224,102,2,223,223,1005,224,524,101,1,223,223,1107,677,226,224,102,2,223,223,1005,224,539,101,1,223,223,1008,677,226,224,102,2,223,223,1005,224,554,101,1,223,223,1008,677,677,224,1002,223,2,223,1006,224,569,101,1,223,223,1107,677,677,224,102,2,223,223,1006,224,584,1001,223,1,223,1108,226,226,224,1002,223,2,223,1006,224,599,101,1,223,223,7,226,677,224,102,2,223,223,1006,224,614,101,1,223,223,108,677,677,224,1002,223,2,223,1006,224,629,101,1,223,223,1007,677,226,224,102,2,223,223,1006,224,644,101,1,223,223,8,677,677,224,1002,223,2,223,1006,224,659,101,1,223,223,8,677,226,224,102,2,223,223,1005,224,674,101,1,223,223,4,223,99,226"
+    ]
