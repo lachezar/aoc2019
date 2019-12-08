@@ -7,9 +7,10 @@ module Lib
   , day4
   , day5
   , day6
+  , day7
   ) where
 
-import Data.List (find, nub)
+import Data.List (find, nub, permutations)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Text as Text
@@ -263,8 +264,57 @@ traverseCountSteps c graph ev v
     seq = Map.findWithDefault [] v graph
     n = c + 1
 
+day7 :: IO ()
+day7 = do
+  [line] <- getLines
+  day7Solution line
+
+day7Solution :: Text.Text -> IO ()
+day7Solution line =
+  case mapM (signed decimal) $ Text.splitOn (Text.pack ",") line of
+    Left _ -> die "Couldn't parse the input"
+    Right seq -> do
+      results <- mapM (combineProcessInstruction' (replicate 5 (0, map fst seq)) [0]) settings
+      print $ maximum results
+  where
+    settings = permutations [5 .. 9]
+
+combineProcessInstruction' :: [(Int, [Int])] -> [Int] -> [Int] -> IO Int
+combineProcessInstruction' ((pc, seq):rest) input [] =
+  if pc == (-999)
+    then return $ head input
+    else do
+      (pc', seq', output) <- processInstruction' pc seq input []
+      combineProcessInstruction' (rest ++ [(pc', seq')]) output []
+
+combineProcessInstruction' ((pc, seq):rests) input (setting:rest) = do
+  (pc', seq', output) <- processInstruction' pc seq (setting : input) []
+  combineProcessInstruction' (rests ++ [(pc', seq')]) output rest
+
+processInstruction' :: Int -> [Int] -> [Int] -> [Int] -> IO (Int, [Int], [Int])
+processInstruction' pc seq input output =
+  case seq !! pc of
+    99 -> do
+      print output
+      return (-999, seq, output)
+    104 -> do
+      let newSignal = seq !! (pc + 1)
+      processInstruction' (pc + 2) seq input (output ++ [newSignal])
+    4 -> do
+      let newSignal = seq !! (seq !! (pc + 1))
+      processInstruction' (pc + 2) seq input (output ++ [newSignal])
+    3 ->
+      if null input
+        then return (pc, seq, output)
+        else do
+          let seq' = updateList seq (seq !! (pc + 1)) $ head input
+          processInstruction' (pc + 2) seq' (tail input) output
+    other -> do
+      let (pc', seq') = processComplexInstruction pc seq (pad (show other) '0' 5)
+      processInstruction' pc' seq' input output
+
 getLines :: IO [Text.Text]
 getLines = Text.lines . Text.pack <$> getContents
--- getLines = return ["R98,U47,R26,D63,R33,U87,L62,D20,R33,U53,R51", "U98,R91,D20,R16,D67,R40,U7,R15,U6,R7"]
+-- getLines =  return [ "3,26,1001,26,-4,26,3,27,1002,27,2,27,1,27,26,27,4,27,1001,28,-1,28,1005,28,6,99,0,0,5"]
 -- getLines = return ["1002,4,3,4,33"]
 -- getLines = return ["COM)B", "B)C", "C)D", "D)E", "E)F", "B)G", "G)H", "D)I", "E)J", "J)K", "K)L", "K)YOU", "I)SAN"]
