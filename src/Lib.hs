@@ -8,9 +8,12 @@ module Lib
   , day5
   , day6
   , day7
+  , day8
   ) where
 
+import Data.Foldable (minimumBy)
 import Data.List (find, nub, permutations)
+import Data.List.Index (indexed)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Text as Text
@@ -286,7 +289,6 @@ combineProcessInstruction' ((pc, seq):rest) input [] =
     else do
       (pc', seq', output) <- processInstruction' pc seq input []
       combineProcessInstruction' (rest ++ [(pc', seq')]) output []
-
 combineProcessInstruction' ((pc, seq):rests) input (setting:rest) = do
   (pc', seq', output) <- processInstruction' pc seq (setting : input) []
   combineProcessInstruction' (rests ++ [(pc', seq')]) output rest
@@ -313,8 +315,42 @@ processInstruction' pc seq input output =
       let (pc', seq') = processComplexInstruction pc seq (pad (show other) '0' 5)
       processInstruction' pc' seq' input output
 
+day8 :: IO ()
+day8 = do
+  [line] <- getLines
+  day8Solution $ Text.unpack line
+
+day8Solution :: String -> IO ()
+day8Solution line = do
+  print $ ones * twos
+  print canvas
+  mapM_ print $ segment 25 canvas
+  where
+    segments = segment (25 * 6) line
+    zeros = map (\(i, s) -> (i, length $ filter (== '0') s)) $ indexed segments
+    (mostZerosSegment, _) = minimumBy (\(ia, a) (ib, b) -> compare a b) zeros
+    ones = length $ filter (== '1') $ segments !! mostZerosSegment
+    twos = length $ filter (== '2') $ segments !! mostZerosSegment
+    canvas = blend (head segments) (tail segments)
+
+segment :: Int -> String -> [String]
+segment _ [] = []
+segment n l = s : segment n r
+  where
+    (s, r) = splitAt n l
+
+blend :: String -> [String] -> String
+blend canvas [] = canvas
+blend canvas (top:layers) = blend canvas' layers
+  where
+    canvas' = zipWith blendPixels canvas top
+
+blendPixels :: Char -> Char -> Char
+blendPixels '2' lp = lp
+blendPixels cp _ = cp
+
 getLines :: IO [Text.Text]
 getLines = Text.lines . Text.pack <$> getContents
--- getLines =  return [ "3,26,1001,26,-4,26,3,27,1002,27,2,27,1,27,26,27,4,27,1001,28,-1,28,1005,28,6,99,0,0,5"]
+-- getLines =  return ["123456789012"]
 -- getLines = return ["1002,4,3,4,33"]
 -- getLines = return ["COM)B", "B)C", "C)D", "D)E", "E)F", "B)G", "G)H", "D)I", "E)J", "J)K", "K)L", "K)YOU", "I)SAN"]
