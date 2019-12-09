@@ -9,6 +9,7 @@ module Lib
   , day6
   , day7
   , day8
+  , day9
   ) where
 
 import Data.Foldable (minimumBy)
@@ -17,6 +18,7 @@ import Data.List.Index (indexed)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Text as Text
+import qualified Data.Text.IO as TextIO
 import Data.Text.Read (decimal, signed)
 import System.Exit (die)
 
@@ -187,46 +189,70 @@ day5Solution :: Text.Text -> IO ()
 day5Solution line =
   case mapM (signed decimal) $ Text.splitOn (Text.pack ",") line of
     Left _ -> die "Couldn't parse the input"
-    Right seq -> processInstruction 0 $ map fst seq
+    Right seq -> processInstruction 0 0 $ map fst seq
 
-processInstruction :: Int -> [Int] -> IO ()
-processInstruction pc seq =
+processInstruction :: Int -> Int -> [Int] -> IO ()
+processInstruction rb pc seq =
   case seq !! pc of
     99 -> print "end"
+    204 -> do
+      print $ getValueUsingMode rb seq '2' (pc + 1)
+      processInstruction rb (pc + 2) seq
     104 -> do
-      print $ seq !! (pc + 1)
-      processInstruction (pc + 2) seq
+      print $ getValueUsingMode rb seq '1' (pc + 1)
+      processInstruction rb (pc + 2) seq
     4 -> do
-      print $ seq !! (seq !! (pc + 1))
-      processInstruction (pc + 2) seq
+      print $ getValueUsingMode rb seq '0' (pc + 1)
+      processInstruction rb (pc + 2) seq
+    203 -> do
+      x <- getLine
+      let seq' = setValueUsingMode rb seq '2' (pc + 1) (read x)
+      processInstruction rb (pc + 2) seq'
     3 -> do
       x <- getLine
-      let seq' = updateList seq (seq !! (pc + 1)) (read x)
-      processInstruction (pc + 2) seq'
-    other -> uncurry processInstruction $ processComplexInstruction pc seq (pad (show other) '0' 5)
+      let seq' = setValueUsingMode rb seq '0' (pc + 1) (read x)
+      processInstruction rb (pc + 2) seq'
+    other -> do
+      let (rb', pc', seq') = processComplexInstruction rb pc seq (pad (show other) '0' 5)
+      processInstruction rb' pc' seq'
 
-processComplexInstruction :: Int -> [Int] -> String -> (Int, [Int])
-processComplexInstruction pc seq (_a:b:c:de)
+processComplexInstruction :: Int -> Int -> [Int] -> String -> (Int, Int, [Int])
+processComplexInstruction rb pc seq (a:b:c:de)
   | de == "05" || de == "06" =
     let nextPc =
-          if instructionType' de (getValueUsingMode seq c (seq !! (pc + 1))) 0
-            then getValueUsingMode seq b (seq !! (pc + 2))
+          if instructionType' de (getValueUsingMode rb seq c (pc + 1)) 0
+            then getValueUsingMode rb seq b (pc + 2)
             else pc + 3
-     in (nextPc, seq)
+     in (rb, nextPc, seq)
   | de == "07" || de == "08" =
     let v =
-          if instructionType' de (getValueUsingMode seq c (seq !! (pc + 1))) (getValueUsingMode seq b (seq !! (pc + 2)))
+          if instructionType'
+               de
+               (getValueUsingMode rb seq c (pc + 1))
+               (getValueUsingMode rb seq b (pc + 2))
             then 1
             else 0
-     in (pc + 4, updateList seq (seq !! (pc + 3)) v)
+     in (rb, pc + 4, setValueUsingMode rb seq a (pc + 3) v)
+  | de == "09" =
+    let rb' = getValueUsingMode rb seq c (pc + 1)
+     in (rb + rb', pc + 2, seq)
   | otherwise =
     let result =
-          instructionType de (getValueUsingMode seq c (seq !! (pc + 1))) (getValueUsingMode seq b (seq !! (pc + 2)))
-     in (pc + 4, updateList seq (seq !! (pc + 3)) result)
+          instructionType
+            de
+            (getValueUsingMode rb seq c (pc + 1))
+            (getValueUsingMode rb seq b (pc + 2))
+     in (rb, pc + 4, setValueUsingMode rb seq a (pc + 3) result)
 
-getValueUsingMode :: [Int] -> Char -> Int -> Int
-getValueUsingMode _seq '1' input = input
-getValueUsingMode seq '0' input = seq !! input
+getValueUsingMode :: Int -> [Int] -> Char -> Int -> Int
+getValueUsingMode rb seq '2' index = seq !! (rb + seq !! index)
+getValueUsingMode _rb seq '1' index = seq !! index
+getValueUsingMode _rb seq '0' index = seq !! (seq !! index)
+
+setValueUsingMode :: Int -> [Int] -> Char -> Int -> Int -> [Int]
+setValueUsingMode rb seq '2' index value = updateList seq (rb + seq !! index) value
+setValueUsingMode _rb seq '1' index value = updateList seq index value
+setValueUsingMode _rb seq '0' index value = updateList seq (seq !! index) value
 
 instructionType :: Num a => String -> (a -> a -> a)
 instructionType "02" = (*)
@@ -312,7 +338,7 @@ processInstruction' pc seq input output =
           let seq' = updateList seq (seq !! (pc + 1)) $ head input
           processInstruction' (pc + 2) seq' (tail input) output
     other -> do
-      let (pc', seq') = processComplexInstruction pc seq (pad (show other) '0' 5)
+      let (rb, pc', seq') = processComplexInstruction 0 pc seq (pad (show other) '0' 5)
       processInstruction' pc' seq' input output
 
 day8 :: IO ()
@@ -349,8 +375,20 @@ blendPixels :: Char -> Char -> Char
 blendPixels '2' lp = lp
 blendPixels cp _ = cp
 
+day9 :: IO ()
+day9 = do
+  [line] <- getLines
+  day9Solution line
+
+day9Solution :: Text.Text -> IO ()
+day9Solution line =
+  case mapM (signed decimal) $ Text.splitOn (Text.pack ",") line of
+    Left _ -> die "Couldn't parse the input"
+    Right seq -> processInstruction 0 0 $ map fst seq ++ replicate 4000 0
+
 getLines :: IO [Text.Text]
-getLines = Text.lines . Text.pack <$> getContents
--- getLines =  return ["123456789012"]
+getLines = Text.lines <$> TextIO.readFile "input.txt"
+-- getLines = Text.lines . Text.pack <$> getContents
+-- getLines = return ["104,1125899906842624,99"]
 -- getLines = return ["1002,4,3,4,33"]
 -- getLines = return ["COM)B", "B)C", "C)D", "D)E", "E)F", "B)G", "G)H", "D)I", "E)J", "J)K", "K)L", "K)YOU", "I)SAN"]
