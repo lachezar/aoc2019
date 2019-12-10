@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Lib
@@ -10,16 +11,20 @@ module Lib
   , day7
   , day8
   , day9
+  , day10
   ) where
 
 import Data.Foldable (minimumBy)
-import Data.List (find, nub, permutations)
+import Data.List (find, groupBy, maximumBy, nub, permutations, sort)
 import Data.List.Index (indexed)
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Ord (comparing)
+import Data.Ratio ((%))
 import qualified Data.Text as Text
 import qualified Data.Text.IO as TextIO
 import Data.Text.Read (decimal, signed)
+import GHC.List (foldl')
 import System.Exit (die)
 
 day1 :: IO ()
@@ -226,10 +231,7 @@ processComplexInstruction rb pc seq (a:b:c:de)
      in (rb, nextPc, seq)
   | de == "07" || de == "08" =
     let v =
-          if instructionType'
-               de
-               (getValueUsingMode rb seq c (pc + 1))
-               (getValueUsingMode rb seq b (pc + 2))
+          if instructionType' de (getValueUsingMode rb seq c (pc + 1)) (getValueUsingMode rb seq b (pc + 2))
             then 1
             else 0
      in (rb, pc + 4, setValueUsingMode rb seq a (pc + 3) v)
@@ -237,11 +239,7 @@ processComplexInstruction rb pc seq (a:b:c:de)
     let rb' = getValueUsingMode rb seq c (pc + 1)
      in (rb + rb', pc + 2, seq)
   | otherwise =
-    let result =
-          instructionType
-            de
-            (getValueUsingMode rb seq c (pc + 1))
-            (getValueUsingMode rb seq b (pc + 2))
+    let result = instructionType de (getValueUsingMode rb seq c (pc + 1)) (getValueUsingMode rb seq b (pc + 2))
      in (rb, pc + 4, setValueUsingMode rb seq a (pc + 3) result)
 
 getValueUsingMode :: Int -> [Int] -> Char -> Int -> Int
@@ -385,6 +383,122 @@ day9Solution line =
   case mapM (signed decimal) $ Text.splitOn (Text.pack ",") line of
     Left _ -> die "Couldn't parse the input"
     Right seq -> processInstruction 0 0 $ map fst seq ++ replicate 4000 0
+
+day10 :: IO ()
+day10 = do
+  lines <- getLines
+  day10Solution lines
+
+day10Solution :: [Text.Text] -> IO ()
+day10Solution lines = do
+  print (maxVisibleAsteroids, maxVisiblePoint)
+  print twoHundredAsteroid
+  print $ x twoHundredAsteroid * 100 + y twoHundredAsteroid
+  where
+    asteroids =
+      concatMap
+        (\(i, s) ->
+           foldl'
+             (\acc (j, c) ->
+                if c == '#'
+                  then Point j i : acc
+                  else acc)
+             [] $
+           indexed s) $
+      indexed $ map Text.unpack lines
+    lf = map location asteroids
+    visibleAsteroids = map (\a -> (length $ nub $ lf <*> [a], a)) asteroids
+    (maxVisibleAsteroids, maxVisiblePoint) = maximumBy (comparing fst) visibleAsteroids
+    relativeLocations =
+      sort $
+      filter (\(AsteroidLocation rl _) -> rl /= Self) $
+      map (\a -> AsteroidLocation (location maxVisiblePoint a) (Line maxVisiblePoint a)) asteroids
+    groupedLocations = groupBy (\(AsteroidLocation rl1 _) (AsteroidLocation rl2 _) -> rl1 == rl2) relativeLocations
+    AsteroidLocation _ (Line _ twoHundredAsteroid) = destroyAsteroids 199 groupedLocations
+
+data RelativeLocation
+  = TopLeft Rational
+  | TopRight Rational
+  | BottomLeft Rational
+  | BottomRight Rational
+  | Top
+  | Bottom
+  | Left'
+  | Right'
+  | Self
+  deriving (Show, Eq)
+
+instance Ord RelativeLocation where
+  compare Top Top = EQ
+  compare Top _ = GT
+  compare (TopRight _) Top = LT
+  compare (TopRight a) (TopRight b) = compare a b
+  compare (TopRight _) _ = GT
+  compare Right' Top = LT
+  compare Right' (TopRight _) = LT
+  compare Right' Right' = EQ
+  compare Right' _ = GT
+  compare (BottomRight _) Top = LT
+  compare (BottomRight _) (TopRight _) = LT
+  compare (BottomRight _) Right' = LT
+  compare (BottomRight a) (BottomRight b) = compare a b
+  compare (BottomRight _) _ = GT
+  compare Bottom Top = LT
+  compare Bottom (TopRight _) = LT
+  compare Bottom Right' = LT
+  compare Bottom (BottomRight _) = LT
+  compare Bottom Bottom = EQ
+  compare Bottom _ = GT
+  compare (BottomLeft _) Top = LT
+  compare (BottomLeft _) (TopRight _) = LT
+  compare (BottomLeft _) Right' = LT
+  compare (BottomLeft _) (BottomRight _) = LT
+  compare (BottomLeft _) Bottom = LT
+  compare (BottomLeft a) (BottomLeft b) = compare a b
+  compare (BottomLeft _) _ = GT
+  compare Left' (TopLeft _) = GT
+  compare Left' Left' = EQ
+  compare Left' _ = LT
+  compare (TopLeft a) (TopLeft b) = compare a b
+  compare (TopLeft _) _ = LT
+  compare Self Self = EQ
+  compare Self _ = GT
+
+location :: Point -> Point -> RelativeLocation
+location (Point x y) (Point cx cy)
+  | cx < x && cy < y = TopLeft $ dx % dy
+  | cx < x && cy > y = BottomLeft $ dx % dy
+  | cx > x && cy < y = TopRight $ dx % dy
+  | cx > x && cy > y = BottomRight $ dx % dy
+  | cx == x && cy < y = Top
+  | cx == x && cy > y = Bottom
+  | cx < x && cy == y = Left'
+  | cx > x && cy == y = Right'
+  | cx == x && cy == y = Self
+  where
+    dx = toInteger $ abs (cx - x)
+    dy = toInteger $ abs (cy - y)
+
+instance Ord Line where
+  compare l1 l2 = lineLength l1 `compare` lineLength l2
+
+data AsteroidLocation =
+  AsteroidLocation RelativeLocation Line
+  deriving (Show, Eq)
+
+instance Ord AsteroidLocation where
+  compare (AsteroidLocation rl1 l1) (AsteroidLocation rl2 l2)
+    | rlCompare == EQ = lCompare
+    | otherwise = rlCompare
+    where
+      rlCompare = rl2 `compare` rl1
+      lCompare = l1 `compare` l2
+
+destroyAsteroids :: Int -> [[AsteroidLocation]] -> AsteroidLocation
+destroyAsteroids n [] = undefined
+destroyAsteroids n ([]:rest) = destroyAsteroids n rest
+destroyAsteroids 0 (h:_rest) = head h
+destroyAsteroids n (h:rest) = destroyAsteroids (n - 1) (rest ++ [tail h])
 
 getLines :: IO [Text.Text]
 getLines = Text.lines <$> TextIO.readFile "input.txt"
