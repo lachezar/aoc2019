@@ -25,6 +25,15 @@ import qualified Data.Text as Text
 import qualified Data.Text.IO as TextIO
 import Data.Text.Read (decimal, signed)
 import GHC.List (foldl')
+import IntCode
+  ( Input(..)
+  , Output(..)
+  , ProgramCounter(..)
+  , RelativeBase(..)
+  , Sequence(..)
+  , State(..)
+  , runInstructions
+  )
 import System.Exit (die)
 
 day1 :: IO ()
@@ -241,20 +250,24 @@ processComplexInstruction rb pc seq (a:b:c:de)
   | otherwise =
     let result = instructionType de (getValueUsingMode rb seq c (pc + 1)) (getValueUsingMode rb seq b (pc + 2))
      in (rb, pc + 4, setValueUsingMode rb seq a (pc + 3) result)
+processComplexInstruction _ _ _ _ = undefined
 
 getValueUsingMode :: Int -> [Int] -> Char -> Int -> Int
 getValueUsingMode rb seq '2' index = seq !! (rb + seq !! index)
 getValueUsingMode _rb seq '1' index = seq !! index
 getValueUsingMode _rb seq '0' index = seq !! (seq !! index)
+getValueUsingMode _ _ _ _ = undefined
 
 setValueUsingMode :: Int -> [Int] -> Char -> Int -> Int -> [Int]
 setValueUsingMode rb seq '2' index value = updateList seq (rb + seq !! index) value
 setValueUsingMode _rb seq '1' index value = updateList seq index value
 setValueUsingMode _rb seq '0' index value = updateList seq (seq !! index) value
+setValueUsingMode _ _ _ _ _ = undefined
 
 instructionType :: Num a => String -> (a -> a -> a)
 instructionType "02" = (*)
 instructionType "01" = (+)
+instructionType _ = undefined
 
 instructionType' ::
      Eq a
@@ -264,6 +277,7 @@ instructionType' "08" = (==)
 instructionType' "07" = (<)
 instructionType' "06" = (==)
 instructionType' "05" = (/=)
+instructionType' _ = undefined
 
 pad :: String -> Char -> Int -> String
 pad s c n = replicate (n - length s) c ++ s
@@ -499,6 +513,24 @@ destroyAsteroids n [] = undefined
 destroyAsteroids n ([]:rest) = destroyAsteroids n rest
 destroyAsteroids 0 (h:_rest) = head h
 destroyAsteroids n (h:rest) = destroyAsteroids (n - 1) (rest ++ [tail h])
+
+day11 :: IO ()
+day11 = do
+  [line] <- getLines
+  day11Solution line
+
+day11Solution :: Text.Text -> IO ()
+day11Solution line =
+  case mapM (signed decimal) $ Text.splitOn (Text.pack ",") line of
+    Left _ -> die "Couldn't parse the input"
+    Right seq ->
+      runInstructions
+        (State
+           (ProgramCounter 0)
+           (RelativeBase 0)
+           (Sequence $ map fst seq ++ replicate 10000 0)
+           (Input (repeat 1))
+           (Output Nothing))
 
 getLines :: IO [Text.Text]
 getLines = Text.lines <$> TextIO.readFile "input.txt"
