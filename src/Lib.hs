@@ -12,6 +12,7 @@ module Lib
   , day8
   , day9
   , day10
+  , day11
   ) where
 
 import Data.Foldable (minimumBy)
@@ -32,6 +33,7 @@ import IntCode
   , RelativeBase(..)
   , Sequence(..)
   , State(..)
+  , runInstruction
   , runInstructions
   )
 import System.Exit (die)
@@ -396,7 +398,14 @@ day9Solution :: Text.Text -> IO ()
 day9Solution line =
   case mapM (signed decimal) $ Text.splitOn (Text.pack ",") line of
     Left _ -> die "Couldn't parse the input"
-    Right seq -> processInstruction 0 0 $ map fst seq ++ replicate 4000 0
+    Right seq ->
+      runInstructions
+        (State
+           (ProgramCounter 0)
+           (RelativeBase 0)
+           (Sequence (map fst seq ++ replicate 4000 0))
+           (Input [2])
+           (Output Nothing))
 
 day10 :: IO ()
 day10 = do
@@ -524,13 +533,88 @@ day11Solution line =
   case mapM (signed decimal) $ Text.splitOn (Text.pack ",") line of
     Left _ -> die "Couldn't parse the input"
     Right seq ->
-      runInstructions
-        (State
-           (ProgramCounter 0)
-           (RelativeBase 0)
-           (Sequence $ map fst seq ++ replicate 10000 0)
-           (Input (repeat 1))
-           (Output Nothing))
+      runRobotInstructions
+        (State (ProgramCounter 0) (RelativeBase 0) (Sequence $ map fst seq ++ replicate 1000 0) (Input []) (Output Nothing))
+        (RobotState (0, 0) DUp DirectionInstruction)
+        (Map.insert (0, 0) 1 Map.empty)
+
+type Field = Map (Int, Int) Int
+
+data Direction
+  = DLeft
+  | DRight
+  | DUp
+  | DDown
+  deriving (Show)
+
+data RobotInstruction
+  = ColorInstruction
+  | DirectionInstruction
+  deriving (Show)
+
+data RobotState =
+  RobotState
+    { robotLoc :: (Int, Int)
+    , robotDir :: Direction
+    , robotInst :: RobotInstruction
+    }
+  deriving (Show)
+
+moveRobot :: Int -> RobotState -> RobotState
+moveRobot 0 (RobotState (x, y) DLeft ColorInstruction) = RobotState (x, y + 1) DDown DirectionInstruction
+moveRobot 0 (RobotState (x, y) DDown ColorInstruction) = RobotState (x + 1, y) DRight DirectionInstruction
+moveRobot 0 (RobotState (x, y) DRight ColorInstruction) = RobotState (x, y - 1) DUp DirectionInstruction
+moveRobot 0 (RobotState (x, y) DUp ColorInstruction) = RobotState (x - 1, y) DLeft DirectionInstruction
+moveRobot 1 (RobotState (x, y) DLeft ColorInstruction) = RobotState (x, y - 1) DUp DirectionInstruction
+moveRobot 1 (RobotState (x, y) DDown ColorInstruction) = RobotState (x - 1, y) DLeft DirectionInstruction
+moveRobot 1 (RobotState (x, y) DRight ColorInstruction) = RobotState (x, y + 1) DDown DirectionInstruction
+moveRobot 1 (RobotState (x, y) DUp ColorInstruction) = RobotState (x + 1, y) DRight DirectionInstruction
+moveRobot _ _ = undefined
+
+runRobot :: RobotState -> Field -> Maybe Int -> (RobotState, Field)
+runRobot robotState field (Just x) =
+  let lastInst = robotInst robotState
+   in case lastInst of
+        ColorInstruction ->
+          let robotState' = moveRobot x robotState
+           in (robotState', field)
+        DirectionInstruction ->
+          let robotState' = robotState {robotInst = ColorInstruction}
+           in let location = robotLoc robotState
+               in let currentColor = Map.findWithDefault 0 location field
+                   in if currentColor == x
+                        then (robotState', field)
+                        else let field' = Map.insert location x field
+                              in (robotState', field')
+runRobot robotState field Nothing = (robotState, field)
+
+printField :: Field -> IO ()
+printField field =
+  let canvas = replicate 20 $ replicate 50 '.'
+   in mapM_ print $
+      foldl'
+        (\acc ((i, j), c) -> updateList acc (10 + j) (updateList (acc !! (10 + j)) (0 + i) $ printColor c))
+        canvas $
+      Map.toList field
+
+printColor :: Int -> Char
+printColor 0 = '.'
+printColor 1 = '#'
+printColor _ = undefined
+
+runRobotInstructions :: State -> RobotState -> Field -> IO ()
+runRobotInstructions End _ _ = print "end"
+runRobotInstructions state@(State pc rb seq input output) robotState field = do
+  let compInput = Map.findWithDefault 0 (robotLoc robotState) field
+  let state' = state {stateInput = Input [compInput]}
+  let instruction = unSequence seq !! unProgramCounter pc
+  case runInstruction state' (pad (show instruction) '0' 5) of
+    End -> printField field
+    state''@(State pc _rb _seq _input output') -> do
+      let (robotState', field') = runRobot robotState field (unOutput output')
+      -- consume the program output and reset it
+      let state''' = state'' {stateOutput = Output Nothing}
+      runRobotInstructions state''' robotState' field'
 
 getLines :: IO [Text.Text]
 getLines = Text.lines <$> TextIO.readFile "input.txt"

@@ -3,6 +3,7 @@
 
 module IntCode
   ( runInstructions
+  , runInstruction
   , State(..)
   , ProgramCounter(..)
   , RelativeBase(..)
