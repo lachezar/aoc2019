@@ -13,18 +13,23 @@ module Lib
   , day9
   , day10
   , day11
+  , day12
+  , day13
   ) where
 
+import Control.Concurrent (threadDelay)
 import Data.Foldable (minimumBy)
-import Data.List (find, groupBy, maximumBy, nub, permutations, sort)
+import Data.List (find, findIndices, groupBy, maximumBy, nub, permutations, sort, sortBy)
 import Data.List.Index (indexed)
-import Data.Map (Map)
+import Data.Map (Map, toList)
 import qualified Data.Map as Map
+import Data.Maybe (maybeToList)
 import Data.Ord (comparing)
 import Data.Ratio ((%))
 import qualified Data.Text as Text
 import qualified Data.Text.IO as TextIO
 import Data.Text.Read (decimal, signed)
+import GHC.IO.Handle (hFlush)
 import GHC.List (foldl')
 import IntCode
   ( Input(..)
@@ -37,6 +42,7 @@ import IntCode
   , runInstructions
   )
 import System.Exit (die)
+import System.IO (stdout)
 
 day1 :: IO ()
 day1 = do
@@ -534,7 +540,12 @@ day11Solution line =
     Left _ -> die "Couldn't parse the input"
     Right seq ->
       runRobotInstructions
-        (State (ProgramCounter 0) (RelativeBase 0) (Sequence $ map fst seq ++ replicate 1000 0) (Input []) (Output Nothing))
+        (State
+           (ProgramCounter 0)
+           (RelativeBase 0)
+           (Sequence $ map fst seq ++ replicate 1000 0)
+           (Input [])
+           (Output Nothing))
         (RobotState (0, 0) DUp DirectionInstruction)
         (Map.insert (0, 0) 1 Map.empty)
 
@@ -592,9 +603,7 @@ printField :: Field -> IO ()
 printField field =
   let canvas = replicate 20 $ replicate 50 '.'
    in mapM_ print $
-      foldl'
-        (\acc ((i, j), c) -> updateList acc (10 + j) (updateList (acc !! (10 + j)) (0 + i) $ printColor c))
-        canvas $
+      foldl' (\acc ((i, j), c) -> updateList acc (10 + j) (updateList (acc !! (10 + j)) (0 + i) $ printColor c)) canvas $
       Map.toList field
 
 printColor :: Int -> Char
@@ -615,6 +624,181 @@ runRobotInstructions state@(State pc rb seq input output) robotState field = do
       -- consume the program output and reset it
       let state''' = state'' {stateOutput = Output Nothing}
       runRobotInstructions state''' robotState' field'
+
+data Triple =
+  Triple
+    { tripleX :: Int
+    , tripleY :: Int
+    , tripleZ :: Int
+    }
+  deriving (Eq)
+
+instance Show Triple where
+  show (Triple a b c) = "<x=" <> show a <> ", y=" <> show b <> ", z=" <> show c <> ">"
+
+listToTriple :: [Int] -> Triple
+listToTriple [a, b, c] = Triple a b c
+listToTriple _ = undefined
+
+velocityChange :: [Triple] -> [Triple] -> [Triple]
+velocityChange pos vel = vel'
+  where
+    xs = map tripleX pos
+    ys = map tripleY pos
+    zs = map tripleZ pos
+    vxs = map tripleX vel
+    vys = map tripleY vel
+    vzs = map tripleZ vel
+    vel' =
+      zipWith3
+        Triple
+        (zipWith3
+           (\a b c -> a - b + c)
+           (map (length . (\e -> filter (> e) xs)) xs)
+           (map (length . (\e -> filter (< e) xs)) xs)
+           vxs)
+        (zipWith3
+           (\a b c -> a - b + c)
+           (map (length . (\e -> filter (> e) ys)) ys)
+           (map (length . (\e -> filter (< e) ys)) ys)
+           vys)
+        (zipWith3
+           (\a b c -> a - b + c)
+           (map (length . (\e -> filter (> e) zs)) zs)
+           (map (length . (\e -> filter (< e) zs)) zs)
+           vzs)
+
+gravityChange :: [Triple] -> [Triple] -> [Triple]
+gravityChange pos vel = pos'
+  where
+    xs = map tripleX pos
+    ys = map tripleY pos
+    zs = map tripleZ pos
+    vxs = map tripleX vel
+    vys = map tripleY vel
+    vzs = map tripleZ vel
+    pos' = zipWith3 Triple (zipWith (+) xs vxs) (zipWith (+) ys vys) (zipWith (+) zs vzs)
+
+moonPositions :: [Triple] -> [Triple] -> Int -> ([Triple], [Triple])
+moonPositions pos vel 0 = (pos, vel)
+moonPositions pos vel n = moonPositions pos' vel' (n - 1)
+  where
+    vel' = velocityChange pos vel
+    pos' = gravityChange pos vel'
+
+moonPositionsList :: [Triple] -> [Triple] -> [[Triple]]
+moonPositionsList pos vel = pos' : moonPositionsList pos' vel'
+  where
+    vel' = velocityChange pos vel
+    pos' = gravityChange pos vel'
+
+energy :: Triple -> Int
+energy (Triple x y z) = abs x + abs y + abs z
+
+findTimeSteps :: [Triple] -> [Triple] -> Int
+findTimeSteps pos vel =
+  (dx * dy * dz) `div` foldl' (*) 1 (take 2 $ sortBy (flip compare) [gcd dx dy, gcd dx dz, gcd dy dz])
+  where
+    seq = take 1000000 $ moonPositionsList pos vel
+    xs = map tripleX pos
+    ys = map tripleY pos
+    zs = map tripleZ pos
+    ix = findIndices (\m -> map tripleX m == xs) seq
+    iy = findIndices (\m -> map tripleY m == ys) seq
+    iz = findIndices (\m -> map tripleZ m == zs) seq
+    dx = ix !! 4 - ix !! 2
+    dy = iy !! 4 - iy !! 2
+    dz = iz !! 4 - iz !! 2
+
+day12 :: IO ()
+day12 = do
+  lines <- getLines
+  day12Solution lines
+
+day12Solution :: [Text.Text] -> IO ()
+day12Solution lines =
+  case mapM
+         (mapM (signed decimal . Text.filter (\c -> c `elem` ('-' : ['0' .. '9']))) . Text.splitOn (Text.pack ","))
+         lines of
+    Left _ -> die "Couldn't parse the input"
+    Right seq ->
+      let pos = map (listToTriple . map fst) seq
+       in let vel = replicate 4 (Triple 0 0 0)
+           in print $ findTimeSteps pos vel
+
+drawTile :: Int -> Char
+drawTile 0 = '.'
+drawTile 1 = '@'
+drawTile 2 = '#'
+drawTile 3 = '='
+drawTile 4 = 'o'
+drawTile _ = undefined
+
+drawArcade :: Field -> IO ()
+drawArcade field =
+  mapM_ print $ foldl' (\c ((x, y), t) -> updateList c y (updateList (c !! y) x $ drawTile t)) canvas tiles
+  where
+    canvas = replicate 24 (replicate 40 '.')
+    tiles = toList field
+
+findTileOnX :: Field -> Int -> Int
+findTileOnX field tile = x
+  where
+    tiles = toList field
+    Just ((x, _), _) = find (\((x, y), t) -> t == tile) tiles
+
+runArcadeInstructions :: State -> Field -> [Int] -> IO ()
+runArcadeInstructions End field _ = return ()
+runArcadeInstructions state@(State pc rb seq _input output) field aggregatedOutput = do
+  let instruction = unSequence seq !! unProgramCounter pc
+  state' <-
+    if instruction `mod` 10 == 3
+      then do
+        putStr "\ESC[2J"
+        -- clear the terminal
+        drawArcade field
+        hFlush stdout
+        threadDelay $ 1000000 `div` 30
+        let ballX = findTileOnX field 4
+        let paddleX = findTileOnX field 3
+        let input
+              | ballX < paddleX = -1
+              | ballX == paddleX = 0
+              | otherwise = 1
+        return $ State pc rb seq (Input [input]) output
+      else return state
+  case runInstruction state' (pad (show instruction) '0' 5) of
+    End -> runArcadeInstructions End field []
+    state''@(State _pc _rb _seq _input output')
+  -- consume the program output and reset it
+     ->
+      let state''' = state'' {stateOutput = Output Nothing}
+       in case aggregatedOutput ++ maybeToList (unOutput output') of
+            [-1, 0, score] -> do
+              print $ "score: " <> show score
+              runArcadeInstructions state''' field []
+            [x, y, t] -> runArcadeInstructions state''' (Map.insert (x, y) t field) []
+            outputBuffer -> runArcadeInstructions state''' field outputBuffer
+
+day13 :: IO ()
+day13 = do
+  [line] <- getLines
+  day13Solution line
+
+day13Solution :: Text.Text -> IO ()
+day13Solution line =
+  case mapM (signed decimal) $ Text.splitOn (Text.pack ",") line of
+    Left _ -> die "Couldn't parse the input"
+    Right seq ->
+      runArcadeInstructions
+        (State
+           (ProgramCounter 0)
+           (RelativeBase 0)
+           (Sequence $ updateList (map fst seq ++ replicate 1000 0) 0 2)
+           (Input [])
+           (Output Nothing))
+        Map.empty
+        []
 
 getLines :: IO [Text.Text]
 getLines = Text.lines <$> TextIO.readFile "input.txt"
