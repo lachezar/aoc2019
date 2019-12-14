@@ -33,6 +33,10 @@ executables:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
+    - -fwarn-tabs
+    - -fwarn-unused-imports
+    - -fwarn-missing-signatures
+    - -fwarn-incomplete-patterns
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N

@@ -89,6 +89,7 @@ day2Solution cp seq
 calc :: [Int] -> Int -> Int -> Int -> Int
 calc seq 1 addr1 addr2 = seq !! addr1 + seq !! addr2
 calc seq 2 addr1 addr2 = seq !! addr1 * seq !! addr2
+calc _ _ _ _ = undefined
 
 updateList :: [a] -> Int -> a -> [a]
 updateList l i v = take i l ++ [v] ++ drop (i + 1) l
@@ -144,10 +145,12 @@ relativePoint (Point x y) 'L' offset = Point (x - offset) y
 relativePoint (Point x y) 'R' offset = Point (x + offset) y
 relativePoint (Point x y) 'U' offset = Point x (y + offset)
 relativePoint (Point x y) 'D' offset = Point x (y - offset)
+relativePoint _ _ _ = undefined
 
 makeLines :: [Point] -> [Line]
 makeLines [p1, p2] = [Line p1 p2]
 makeLines (p1:p2:pts) = Line p1 p2 : makeLines (p2 : pts)
+makeLines _ = undefined
 
 checkLinesCross :: Line -> Line -> Bool
 checkLinesCross (Line (Point a1 b1) (Point a2 b2)) (Line (Point x1 y1) (Point x2 y2)) =
@@ -161,11 +164,13 @@ manhattanDistance :: Line -> Line -> Int
 manhattanDistance (Line (Point a1 b1) (Point a2 b2)) (Line (Point x1 y1) (Point x2 y2))
   | a1 == a2 && y1 == y2 = abs a1 + abs y1
   | b1 == b2 && x1 == x2 = abs b1 + abs x1
+manhattanDistance _ _ = undefined
 
 crossPoint :: Line -> Line -> Point
 crossPoint (Line (Point a1 b1) (Point a2 b2)) (Line (Point x1 y1) (Point x2 y2))
   | a1 == a2 && y1 == y2 = Point a1 y1
   | b1 == b2 && x1 == x2 = Point x1 b1
+crossPoint _ _ = undefined
 
 lineLength :: Line -> Int
 lineLength (Line (Point x1 y1) (Point x2 y2)) = abs (x1 - x2) + abs (y1 - y2)
@@ -182,12 +187,14 @@ day4Solution line =
     Right [(low, _), (high, _)] ->
       print $
       length $ filter (== True) [elem 2 (islands (show i) '@' []) && checkForIncreasing (show i) | i <- [low .. high]]
+    Right _ -> undefined
 
 checkForDouble :: String -> Bool
 checkForDouble [_] = False
 checkForDouble (a:b:rest)
   | a == b = True
   | otherwise = checkForDouble (b : rest)
+checkForDouble _ = undefined
 
 islands :: String -> Char -> [Int] -> [Int]
 islands "" _ acc = acc
@@ -201,6 +208,7 @@ checkForIncreasing [_] = True
 checkForIncreasing (a:b:rest)
   | a <= b = checkForIncreasing (b : rest)
   | otherwise = False
+checkForIncreasing _ = undefined
 
 day5 :: IO ()
 day5 = do
@@ -338,6 +346,7 @@ combineProcessInstruction' ((pc, seq):rest) input [] =
 combineProcessInstruction' ((pc, seq):rests) input (setting:rest) = do
   (pc', seq', output) <- processInstruction' pc seq (setting : input) []
   combineProcessInstruction' (rests ++ [(pc', seq')]) output rest
+combineProcessInstruction' _ _ _ = undefined
 
 processInstruction' :: Int -> [Int] -> [Int] -> [Int] -> IO (Int, [Int], [Int])
 processInstruction' pc seq input output =
@@ -507,6 +516,7 @@ location (Point x y) (Point cx cy)
   where
     dx = toInteger $ abs (cx - x)
     dy = toInteger $ abs (cy - y)
+location _ _ = undefined
 
 instance Ord Line where
   compare l1 l2 = lineLength l1 `compare` lineLength l2
