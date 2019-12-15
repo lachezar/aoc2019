@@ -15,6 +15,7 @@ module Lib
   , day11
   , day12
   , day13
+  , day14
   ) where
 
 import Control.Concurrent (threadDelay)
@@ -29,6 +30,7 @@ import Data.Ratio ((%))
 import qualified Data.Text as Text
 import qualified Data.Text.IO as TextIO
 import Data.Text.Read (decimal, signed)
+import Debug.Trace (traceShow, traceShowId)
 import GHC.IO.Handle (hFlush)
 import GHC.List (foldl')
 import IntCode
@@ -810,9 +812,83 @@ day13Solution line =
         Map.empty
         []
 
+data Ingredient =
+  Ingredient Int String
+  deriving (Show)
+
+type IngredientsStash = Map String Int
+
+type IngredientConversionRules = Map String (Int, [Ingredient])
+
+purchaseIngredient ::
+     IngredientConversionRules -> IngredientsStash -> [Ingredient] -> Int -> (IngredientsStash, [Ingredient], Int)
+purchaseIngredient icr leftovers [] ore = (leftovers, [], ore)
+purchaseIngredient icr leftovers (ing@(Ingredient amount "ORE"):stack) ore =
+  purchaseIngredient icr leftovers stack (ore + amount)
+purchaseIngredient icr leftovers (ingredient@(Ingredient amount ingType):stack) ore =
+  let (leftovers', ingredient'@(Ingredient amount' _)) = getFromStash leftovers ingredient
+   in if amount' == 0
+        then purchaseIngredient icr leftovers' stack ore
+        else let Just (exchangeAmount, exchangeIngredients) = Map.lookup ingType icr
+              in let m = (amount' - 1) `div` exchangeAmount + 1
+                  in let (purchaseMultiplier, sendToStash)
+                           | exchangeAmount > amount' = (1, exchangeAmount - amount')
+                           | exchangeAmount < amount' = (m, m * exchangeAmount - amount')
+                           | otherwise = (1, 0)
+                      in let leftovers'' = addToStash leftovers' (Ingredient sendToStash ingType)
+                          in let stack' =
+                                   map
+                                     (\(Ingredient a it) -> Ingredient (purchaseMultiplier * a) it)
+                                     exchangeIngredients ++
+                                   stack
+                              in purchaseIngredient icr leftovers'' stack' ore
+
+addToStash :: IngredientsStash -> Ingredient -> IngredientsStash
+addToStash leftovers (Ingredient amount ingredientType) = Map.insertWith (+) ingredientType amount leftovers
+
+getFromStash :: IngredientsStash -> Ingredient -> (IngredientsStash, Ingredient)
+getFromStash stash input@(Ingredient amount ingredientType) =
+  if availableAmount >= amount
+    then (Map.insert ingredientType (availableAmount - amount) stash, Ingredient 0 ingredientType)
+    else (Map.insert ingredientType 0 stash, Ingredient (amount - availableAmount) ingredientType)
+  where
+    availableAmount = Map.findWithDefault 0 ingredientType stash
+
+parseIngredient :: String -> Ingredient
+parseIngredient term = Ingredient (read amount) ingredientType
+  where
+    [amount, ingredientType] = words term
+
+day14 :: IO ()
+day14 = do
+  lines <- getLines
+  day14Solution lines
+
+day14Solution :: [Text.Text] -> IO ()
+day14Solution lines = do
+  let fuelForOneTrillionOre =
+        takeWhile
+          (\a ->
+             let (_, _, oreAmount) = purchaseIngredient ingredientConversionRules leftovers [Ingredient a "FUEL"] 0
+              in oreAmount < 1000000000000)
+          [(6216590 - 100) .. (6216590 + 100)]
+  print fuelForOneTrillionOre
+  let res@(_, _, oreAmount) = purchaseIngredient ingredientConversionRules leftovers [Ingredient 6216590 "FUEL"] 0
+  print res
+  where
+    parsedLines =
+      map
+        ((\[input, output] ->
+            ( map (parseIngredient . Text.unpack) (Text.splitOn (Text.pack ", ") input)
+            , (parseIngredient . Text.unpack) output)) .
+         Text.splitOn (Text.pack " => "))
+        lines
+    ingredientConversionRules =
+      foldl'
+        (\icr (input, Ingredient amount ingredientType) -> Map.insert ingredientType (amount, input) icr)
+        Map.empty
+        parsedLines
+    leftovers = Map.empty
+
 getLines :: IO [Text.Text]
 getLines = Text.lines <$> TextIO.readFile "input.txt"
--- getLines = Text.lines . Text.pack <$> getContents
--- getLines = return ["104,1125899906842624,99"]
--- getLines = return ["1002,4,3,4,33"]
--- getLines = return ["COM)B", "B)C", "C)D", "D)E", "E)F", "B)G", "G)H", "D)I", "E)J", "J)K", "K)L", "K)YOU", "I)SAN"]
