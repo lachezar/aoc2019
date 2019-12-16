@@ -13,6 +13,7 @@ module IntCode
   ) where
 
 import Data.Foldable (forM_)
+import Debug.Trace (traceShowId)
 
 newtype RelativeBase =
   RelativeBase
@@ -58,7 +59,7 @@ data State
 data Mode
   = Relative
   | Absolute
-  | Immediate
+  | Immediate deriving (Show)
 
 mode :: Char -> Mode
 mode '2' = Relative
@@ -106,7 +107,7 @@ runInstruction state@(State pc rb seq input output) (a:b:c:de)
      in let state'' = state' {stateInput = Input $ tail $ unInput input}
          in upProgramCounter state'' 2
   | de == "04" =
-    let x = get state (mode c) (unProgramCounter pc + 1)
+    let x = get state ( mode c) ( unProgramCounter pc + 1)
      in let state' = state {stateOutput = Output (Just x)}
          in upProgramCounter state' 2
   | de == "05" =

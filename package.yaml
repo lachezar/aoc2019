@@ -24,6 +24,7 @@ dependencies:
 - text >=0.11 && <2.0
 - containers
 - ilist
+- random
 
 library:
   source-dirs: src

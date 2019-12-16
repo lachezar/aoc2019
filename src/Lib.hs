@@ -1,5 +1,7 @@
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TupleSections #-}
 
 module Lib
   ( day1
@@ -16,6 +18,7 @@ module Lib
   , day12
   , day13
   , day14
+  , day15
   ) where
 
 import Control.Concurrent (threadDelay)
@@ -30,7 +33,7 @@ import Data.Ratio ((%))
 import qualified Data.Text as Text
 import qualified Data.Text.IO as TextIO
 import Data.Text.Read (decimal, signed)
-import Debug.Trace (traceShow, traceShowId)
+import Debug.Trace (traceShowId)
 import GHC.IO.Handle (hFlush)
 import GHC.List (foldl')
 import IntCode
@@ -889,6 +892,135 @@ day14Solution lines = do
         Map.empty
         parsedLines
     leftovers = Map.empty
+
+drawDroidTile :: Int -> Char
+drawDroidTile 0 = '#'
+drawDroidTile 1 = '.'
+drawDroidTile 2 = 'X'
+drawDroidTile 9 = 'D'
+drawDroidTile _ = undefined
+
+drawDroidField :: (Int, Int) -> Field -> IO ()
+drawDroidField (dx, dy) field =
+  mapM_ print $
+  foldl' (\c ((x, y), t) -> updateList c (y + 30) (updateList (c !! (y + 30)) (x + 80) $ drawDroidTile t)) canvas tiles
+  where
+    canvas = replicate 60 (replicate 160 ' ')
+    tiles = toList field ++ [((dx, dy), 9)]
+
+moveDroid :: (Int, Int, Int) -> (Int, Int)
+moveDroid (x, y, 1) = (x, y - 1)
+moveDroid (x, y, 2) = (x, y + 1)
+moveDroid (x, y, 3) = (x - 1, y)
+moveDroid (x, y, 4) = (x + 1, y)
+moveDroid _ = undefined
+
+changeDirection :: Int -> Int
+changeDirection 1 = 2
+changeDirection 2 = 1
+changeDirection 3 = 4
+changeDirection 4 = 3
+changeDirection _ = undefined
+
+runDroid :: State -> Field -> [Int] -> (Int, Int, Int) -> Int -> (State, Field, Int)
+runDroid _ field [] _ sto = (End, field, sto)
+runDroid End field _ _ sto = (End, field, sto)
+runDroid state@(State pc rb seq _input output) field steps location@(x, y, d) stepsToOxygen =
+  let instruction = unSequence seq !! unProgramCounter pc
+   in if instruction `mod` 10 == 3
+        then let state' = State pc rb seq (Input [d]) output
+              in let state'' = runInstruction state' (pad (show instruction) '0' 5)
+                  in runDroid state'' field steps location stepsToOxygen
+        else if instruction `mod` 10 == 4
+               then case runInstruction state (pad (show instruction) '0' 5) of
+                      End -> (End, field, stepsToOxygen)
+                      state'@(State _pc _rb _seq input output') ->
+                        let (x', y') = moveDroid location
+                         in case unOutput output' of
+                              Just 0 ->
+                                let field' = Map.insert (x', y') 0 field
+                                 in let notVisitedNeighbours =
+                                          filter (\l -> not (Map.member (moveDroid l) field')) $ map (x, y, ) [1 .. 4]
+                                     in if null notVisitedNeighbours
+                                          then runDroid
+                                                 state'
+                                                 field'
+                                                 (tail steps)
+                                                 (x, y, changeDirection $ head steps)
+                                                 stepsToOxygen
+                                          else runDroid state' field' steps (head notVisitedNeighbours) stepsToOxygen
+                              Just n ->
+                                let stepsToOxygen'
+                                      | n == 2 = length steps
+                                      | otherwise = stepsToOxygen
+                                 in let isCurrentLocationVisited = Map.member (x', y') field
+                                     in let steps'
+                                              | isCurrentLocationVisited = steps
+                                              | otherwise = d : steps
+                                         in let field' = Map.insert (x', y') n field
+                                             in let notVisitedNeighbours =
+                                                      filter (\l -> not (Map.member (moveDroid l) field')) $
+                                                      map (x', y', ) [1 .. 4]
+                                                 in if null notVisitedNeighbours
+                                                      then runDroid
+                                                             state'
+                                                             field'
+                                                             (tail steps)
+                                                             (x', y', changeDirection $ head steps)
+                                                             stepsToOxygen'
+                                                      else runDroid
+                                                             state'
+                                                             field'
+                                                             steps'
+                                                             (head notVisitedNeighbours)
+                                                             stepsToOxygen'
+                              _ -> undefined
+               else let state' = runInstruction state (pad (show instruction) '0' 5)
+                     in runDroid state' field steps location stepsToOxygen
+
+oxygenFlowNeighbours :: Field -> [(Int, Int)] -> (Field, [(Int, Int)])
+oxygenFlowNeighbours field locations = (field', neighbours)
+  where
+    neighbours =
+      concatMap
+        (\(x, y) ->
+           filter
+             (\(x', y') -> Map.member (x', y') field)
+             [(x, y + 1), (x, y - 1), (x + 1, y), (x - 1, y)])
+        locations
+    field' = foldl' (flip Map.delete) field neighbours
+
+oxygenFlow :: Field -> [(Int, Int)] -> Int
+oxygenFlow field [] = 0
+oxygenFlow field locations = uncurry oxygenFlow (oxygenFlowNeighbours (traceShowId field) locations) + 1
+
+day15 :: IO ()
+day15 = do
+  [line] <- getLines
+  day15Solution line
+
+day15Solution :: Text.Text -> IO ()
+day15Solution line =
+  case mapM (signed decimal) $ Text.splitOn (Text.pack ",") line of
+    Left _ -> die "Couldn't parse the input"
+    Right seq -> do
+      let state =
+            State
+              (ProgramCounter 0)
+              (RelativeBase 0)
+              (Sequence $ map fst seq ++ replicate 0 1000)
+              (Input [])
+              (Output Nothing)
+      let field = Map.empty
+      let (_, field', stepsToOxygen) = runDroid state field [4] (0, 0, 4) 0
+      drawDroidField (0, 0) field'
+      print field'
+      print stepsToOxygen
+      case find (\((x, y), t) -> t == 2) $ toList field' of
+        Just ((x, y), 2) ->
+          print $ (oxygenFlow (Map.filter (>0) field') [(x, y)]) - 1
+        _ ->
+          print "Can't flow the maze with oxygen"
 
 getLines :: IO [Text.Text]
 getLines = Text.lines <$> TextIO.readFile "input.txt"
