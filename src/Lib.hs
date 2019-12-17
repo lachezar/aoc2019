@@ -19,9 +19,11 @@ module Lib
   , day13
   , day14
   , day15
+  , day16
   ) where
 
 import Control.Concurrent (threadDelay)
+import Data.Char (chr, ord)
 import Data.Foldable (minimumBy)
 import Data.List (find, findIndices, groupBy, maximumBy, nub, permutations, sort, sortBy)
 import Data.List.Index (indexed)
@@ -300,8 +302,8 @@ instructionType' "06" = (==)
 instructionType' "05" = (/=)
 instructionType' _ = undefined
 
-pad :: String -> Char -> Int -> String
-pad s c n = replicate (n - length s) c ++ s
+pad :: [a] -> a -> Int -> [a]
+pad es e n = replicate (n - length es) e ++ es
 
 day6 :: IO ()
 day6 = do
@@ -983,10 +985,7 @@ oxygenFlowNeighbours field locations = (field', neighbours)
   where
     neighbours =
       concatMap
-        (\(x, y) ->
-           filter
-             (\(x', y') -> Map.member (x', y') field)
-             [(x, y + 1), (x, y - 1), (x + 1, y), (x - 1, y)])
+        (\(x, y) -> filter (\(x', y') -> Map.member (x', y') field) [(x, y + 1), (x, y - 1), (x + 1, y), (x - 1, y)])
         locations
     field' = foldl' (flip Map.delete) field neighbours
 
@@ -1017,10 +1016,32 @@ day15Solution line =
       print field'
       print stepsToOxygen
       case find (\((x, y), t) -> t == 2) $ toList field' of
-        Just ((x, y), 2) ->
-          print $ (oxygenFlow (Map.filter (>0) field') [(x, y)]) - 1
-        _ ->
-          print "Can't flow the maze with oxygen"
+        Just ((x, y), 2) -> print $ oxygenFlow (Map.filter (> 0) field') [(x, y)] - 1
+        _ -> print "Can't flow the maze with oxygen"
+
+generateFFTPattern :: Int -> [Int]
+generateFFTPattern n = tail $ cycle $ concatMap (replicate n) [0, 1, 0, -1]
+
+calcPhaseResult :: Int -> Int -> [Int] -> [Int]
+calcPhaseResult maxSteps step digits
+  | maxSteps + 1 == step = []
+  | otherwise = phaseResult : calcPhaseResult maxSteps (step + 1) digits
+  where
+    phaseResult = (`mod` 10) $ abs $ sum $ zipWith (*) digits $ generateFFTPattern step
+
+day16 :: IO ()
+day16 = do
+  [line] <- getLines
+  day16Solution line
+
+day16Solution :: Text.Text -> IO ()
+day16Solution line =
+  let digits = map (\c -> ord c - asciiZero) $ Text.unpack line
+   in print $
+      map (\x -> chr $ asciiZero + x) $
+      take 8 $ foldl' (\d n -> pad (calcPhaseResult (length d) 1 d) 0 (length digits)) digits [1 .. 100]
+  where
+    asciiZero = ord '0'
 
 getLines :: IO [Text.Text]
 getLines = Text.lines <$> TextIO.readFile "input.txt"
