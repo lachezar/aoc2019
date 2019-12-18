@@ -1029,17 +1029,24 @@ calcPhaseResult maxSteps step digits
   where
     phaseResult = (`mod` 10) $ abs $ sum $ zipWith (*) digits $ generateFFTPattern step
 
+calcPhaseResult' :: [Int] -> [Int]
+calcPhaseResult' digits = init $ foldr (\d (h:r) -> ((d + h) `mod` 10) : h : r) [0] digits
+
 day16 :: IO ()
 day16 = do
   [line] <- getLines
   day16Solution line
 
 day16Solution :: Text.Text -> IO ()
-day16Solution line =
+day16Solution line = do
   let digits = map (\c -> ord c - asciiZero) $ Text.unpack line
-   in print $
-      map (\x -> chr $ asciiZero + x) $
-      take 8 $ foldl' (\d n -> pad (calcPhaseResult (length d) 1 d) 0 (length digits)) digits [1 .. 100]
+  print $
+    map (\x -> chr $ asciiZero + x) $
+    take 8 $ foldl' (\d n -> pad (calcPhaseResult (length d) 1 d) 0 (length digits)) digits [1 .. 100]
+  let digits10k = take (length digits * 10000) $ cycle digits
+  let offset = read $ take 7 $ Text.unpack line
+  let digits' = drop offset digits10k
+  print $ map (\x -> chr $ asciiZero + x) $ take 8 $ foldl' (\acc _ -> calcPhaseResult' acc) digits' [1 .. 100]
   where
     asciiZero = ord '0'
 
