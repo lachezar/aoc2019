@@ -14,6 +14,8 @@ module IntCode
 
 import Data.Foldable (forM_)
 import Debug.Trace (traceShowId)
+import Data.Map.Internal (Map)
+import Data.Map ((!), insert)
 
 newtype RelativeBase =
   RelativeBase
@@ -29,7 +31,7 @@ newtype ProgramCounter =
 
 newtype Sequence =
   Sequence
-    { unSequence :: [Int]
+    { unSequence :: Map Int Int
     }
   deriving (Show)
 
@@ -68,18 +70,18 @@ mode '0' = Absolute
 mode _ = undefined
 
 get :: State -> Mode -> Int -> Int
-get (State pc rb seq _ _) Relative index = unSequence seq !! (unRelativeBase rb + unSequence seq !! index)
-get (State pc rb seq _ _) Immediate index = unSequence seq !! index
-get (State pc rb seq _ _) Absolute index = unSequence seq !! (unSequence seq !! index)
+get (State pc rb seq _ _) Relative index = unSequence seq ! (unRelativeBase rb + unSequence seq ! index)
+get (State pc rb seq _ _) Immediate index = unSequence seq ! index
+get (State pc rb seq _ _) Absolute index = unSequence seq ! (unSequence seq ! index)
 get _ _ _ = undefined
 
 set :: State -> Mode -> Int -> Int -> State
 set state@(State pc rb seq input output) Relative index value =
-  state {stateSeq = Sequence $ updateList (unSequence seq) (unRelativeBase rb + unSequence seq !! index) value}
+  state {stateSeq = Sequence $ insert (unRelativeBase rb + unSequence seq ! index) value (unSequence seq)}
 set state@(State pc rb seq input output) Immediate index value =
-  state {stateSeq = Sequence $ updateList (unSequence seq) index value}
+  state {stateSeq = Sequence $ insert index value (unSequence seq)}
 set state@(State pc rb seq input output) Absolute index value =
-  state {stateSeq = Sequence $ updateList (unSequence seq) (unSequence seq !! index) value}
+  state {stateSeq = Sequence $ insert (unSequence seq ! index) value (unSequence seq)}
 set _ _ _ _ = undefined
 
 updateList :: [a] -> Int -> a -> [a]
@@ -152,7 +154,7 @@ runInstruction _ _ = undefined
 runInstructions :: State -> IO ()
 runInstructions End = print "end"
 runInstructions state@(State pc rb seq input output) = do
-  let instruction = unSequence seq !! unProgramCounter pc
+  let instruction = unSequence seq ! unProgramCounter pc
   case runInstruction state (pad (show instruction) '0' 5) of
     End -> print "end"
     state' -> do

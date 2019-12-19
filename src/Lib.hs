@@ -20,6 +20,7 @@ module Lib
   , day14
   , day15
   , day16
+  , day17
   ) where
 
 import Control.Concurrent (threadDelay)
@@ -27,7 +28,7 @@ import Data.Char (chr, ord)
 import Data.Foldable (minimumBy)
 import Data.List (find, findIndices, groupBy, maximumBy, nub, permutations, sort, sortBy)
 import Data.List.Index (indexed)
-import Data.Map (Map, toList)
+import Data.Map (Map, (!), toList)
 import qualified Data.Map as Map
 import Data.Maybe (maybeToList)
 import Data.Ord (comparing)
@@ -425,7 +426,7 @@ day9Solution line =
         (State
            (ProgramCounter 0)
            (RelativeBase 0)
-           (Sequence (map fst seq ++ replicate 4000 0))
+           (Sequence (Map.fromList $ indexed $ map fst seq ++ replicate 4000 0))
            (Input [2])
            (Output Nothing))
 
@@ -560,7 +561,7 @@ day11Solution line =
         (State
            (ProgramCounter 0)
            (RelativeBase 0)
-           (Sequence $ map fst seq ++ replicate 1000 0)
+           (Sequence $ Map.fromList $ indexed $ map fst seq)
            (Input [])
            (Output Nothing))
         (RobotState (0, 0) DUp DirectionInstruction)
@@ -633,7 +634,7 @@ runRobotInstructions End _ _ = print "end"
 runRobotInstructions state@(State pc rb seq input output) robotState field = do
   let compInput = Map.findWithDefault 0 (robotLoc robotState) field
   let state' = state {stateInput = Input [compInput]}
-  let instruction = unSequence seq !! unProgramCounter pc
+  let instruction = unSequence seq ! unProgramCounter pc
   case runInstruction state' (pad (show instruction) '0' 5) of
     End -> printField field
     state''@(State pc _rb _seq _input output') -> do
@@ -767,7 +768,7 @@ findTileOnX field tile = x
 runArcadeInstructions :: State -> Field -> [Int] -> IO ()
 runArcadeInstructions End field _ = return ()
 runArcadeInstructions state@(State pc rb seq _input output) field aggregatedOutput = do
-  let instruction = unSequence seq !! unProgramCounter pc
+  let instruction = unSequence seq ! unProgramCounter pc
   state' <-
     if instruction `mod` 10 == 3
       then do
@@ -811,7 +812,7 @@ day13Solution line =
         (State
            (ProgramCounter 0)
            (RelativeBase 0)
-           (Sequence $ updateList (map fst seq ++ replicate 1000 0) 0 2)
+           (Sequence $ Map.insert 0 2 $ Map.fromList $ indexed $ map fst seq)
            (Input [])
            (Output Nothing))
         Map.empty
@@ -928,7 +929,7 @@ runDroid :: State -> Field -> [Int] -> (Int, Int, Int) -> Int -> (State, Field, 
 runDroid _ field [] _ sto = (End, field, sto)
 runDroid End field _ _ sto = (End, field, sto)
 runDroid state@(State pc rb seq _input output) field steps location@(x, y, d) stepsToOxygen =
-  let instruction = unSequence seq !! unProgramCounter pc
+  let instruction = unSequence seq ! unProgramCounter pc
    in if instruction `mod` 10 == 3
         then let state' = State pc rb seq (Input [d]) output
               in let state'' = runInstruction state' (pad (show instruction) '0' 5)
@@ -1007,7 +1008,7 @@ day15Solution line =
             State
               (ProgramCounter 0)
               (RelativeBase 0)
-              (Sequence $ map fst seq ++ replicate 0 1000)
+              (Sequence $ Map.fromList $ indexed $ map fst seq ++ replicate 0 1000)
               (Input [])
               (Output Nothing)
       let field = Map.empty
@@ -1049,6 +1050,55 @@ day16Solution line = do
   print $ map (\x -> chr $ asciiZero + x) $ take 8 $ foldl' (\acc _ -> calcPhaseResult' acc) digits' [1 .. 100]
   where
     asciiZero = ord '0'
+
+drawVRField :: [[Int]] -> IO ()
+drawVRField = mapM_ (print . map chr)
+
+checkIntersection :: [[Int]] -> (Int, Int) -> Int
+checkIntersection field (x, y)
+  | x >= length (head field) - 2 = checkIntersection field (1, y + 1)
+  | y >= length field - 2 = 0
+  | otherwise =
+    if all (\(x', y') -> ((field !! y') !! x') == sc) [(x - 1, y), (x, y), (x + 1, y), (x, y - 1), (x, y + 1)]
+      then (x * y) + checkIntersection field (x + 1, y)
+      else 0 + checkIntersection field (x + 1, y)
+  where
+    sc = ord '#'
+
+runVR :: State -> [[Int]] -> (Int, Int) -> (State, [[Int]], (Int, Int))
+runVR End field _ = (End, field, (0, 0))
+runVR state@(State pc rb seq _input _output) field loc@(x, y) = do
+  let instruction = unSequence seq ! unProgramCounter pc
+  case runInstruction state (pad (show instruction) '0' 5) of
+    End -> (End, field, loc)
+    state'@(State _pc _rb _seq _input output) ->
+      let state'' = state' {stateOutput = Output Nothing}
+       in case unOutput output of
+            Just 10 -> runVR state'' (field ++ [[]]) (0, y + 1)
+            Just c -> runVR state'' (init field ++ [last field ++ [c]]) (x + 1, y)
+            Nothing -> runVR state'' field (x, y)
+
+day17 :: IO ()
+day17 = do
+  [line] <- getLines
+  day17Solution line
+
+day17Solution :: Text.Text -> IO ()
+day17Solution line =
+  case mapM (signed decimal) $ Text.splitOn (Text.pack ",") line of
+    Left _ -> die "Couldn't parse the input"
+    Right seq -> do
+      let state =
+            State
+              (ProgramCounter 0)
+              (RelativeBase 0)
+              (Sequence $ Map.fromList $ indexed $ map fst seq)
+              (Input [])
+              (Output Nothing)
+      let field = [[]]
+      let (state', field', loc) = runVR state field (0, 0)
+      drawVRField field'
+      print $ checkIntersection field' (1, 1)
 
 getLines :: IO [Text.Text]
 getLines = Text.lines <$> TextIO.readFile "input.txt"
