@@ -1052,7 +1052,11 @@ day16Solution line = do
     asciiZero = ord '0'
 
 drawVRField :: [[Int]] -> IO ()
-drawVRField = mapM_ (print . map chr)
+drawVRField field = do
+  putStr "\ESC[2J"
+  mapM_ (print . map chr) field
+  hFlush stdout
+  threadDelay $ 1000000 `div` 30
 
 checkIntersection :: [[Int]] -> (Int, Int) -> Int
 checkIntersection field (x, y)
@@ -1092,13 +1096,15 @@ day17Solution line =
             State
               (ProgramCounter 0)
               (RelativeBase 0)
-              (Sequence $ Map.fromList $ indexed $ map fst seq)
-              (Input [])
+              (Sequence $ Map.insert 0 2 $ Map.fromList $ indexed $ map fst seq)
+              (Input $
+               map ord $
+               unlines ["C,A,C,A,B,C,A,B,C,B", "R,8,R,12,L,8,L,8", "L,10,R,6,R,6,L,8", "R,6,L,10,R,8", "n", ""])
               (Output Nothing)
       let field = [[]]
       let (state', field', loc) = runVR state field (0, 0)
-      drawVRField field'
-      print $ checkIntersection field' (1, 1)
+      drawVRField $ init field'
+      print $ head $ last field'
 
 getLines :: IO [Text.Text]
 getLines = Text.lines <$> TextIO.readFile "input.txt"

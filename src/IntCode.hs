@@ -14,8 +14,7 @@ module IntCode
 
 import Data.Foldable (forM_)
 import Debug.Trace (traceShowId)
-import Data.Map.Internal (Map)
-import Data.Map ((!), insert)
+import Data.Map (Map, insert, findWithDefault)
 
 newtype RelativeBase =
   RelativeBase
@@ -68,6 +67,9 @@ mode '2' = Relative
 mode '1' = Immediate
 mode '0' = Absolute
 mode _ = undefined
+
+(!) :: Ord k => Integral v => Map k v -> k -> v
+(!) m k = findWithDefault 0 k m
 
 get :: State -> Mode -> Int -> Int
 get (State pc rb seq _ _) Relative index = unSequence seq ! (unRelativeBase rb + unSequence seq ! index)
